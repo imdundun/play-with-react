@@ -1,4 +1,5 @@
 import Sample1 from "./pages/Sample1"
+import Sample2 from "./pages/Sample2"
 
 interface SampleConfig {
   id: string
@@ -13,6 +14,12 @@ const samples: SampleConfig[] = [
     element: <Sample1 />,
     name: 'Sample 1',
     description: 'Select + Table'
+  },
+  {
+    id: '2',
+    element: <Sample2 />,
+    name: 'Sample 2',
+    description: 'Image decorator + Scrollspy'
   }
 ]
 
