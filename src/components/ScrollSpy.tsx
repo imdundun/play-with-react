@@ -1,12 +1,6 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useRef,
-} from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import Button, { type ButtonProps } from "./Button";
-import { useInView } from "react-intersection-observer";
+import useInView from "~/hooks/useInView";
 
 type ScrollSpyValue = string;
 
@@ -19,10 +13,19 @@ export default function ScrollSpy({
   value,
   onChange,
 }: ScrollSpyProps) {
-  const refs = useRef<Record<ScrollSpyValue, HTMLDivElement>>({});
+  const [inViewValue, setInViewValue] = useState<ScrollSpyValue>();
+  const scrollingIntoViewRef = useRef(false);
 
   return (
-    <ScrollSpyContext.Provider value={{ value, onChange, refs }}>
+    <ScrollSpyContext.Provider
+      value={{
+        value,
+        onChange,
+        inViewValue,
+        setInViewValue,
+        scrollingIntoViewRef,
+      }}
+    >
       {children}
     </ScrollSpyContext.Provider>
   );
@@ -32,22 +35,20 @@ export type ScrollSpyButtonProps = ButtonProps & {
   value: ScrollSpyValue;
   props?: (active: boolean) => ButtonProps;
 };
-
 ScrollSpy.Button = function ScrollSpyButton({
   value,
   onClick,
   props,
   ...other
 }: ScrollSpyButtonProps) {
-  const { value: activeValue, onChange, refs } = useScrollSpyContext();
-  const active = activeValue === value;
+  const { inViewValue, onChange } = useScrollSpyContext();
+  const active = inViewValue === value;
 
   return (
     <Button
       {...other}
       onClick={(e) => {
         onChange(value);
-        refs.current[value]?.scrollIntoView({ behavior: "smooth" });
         onClick?.(e);
       }}
       {...props?.(active)}
@@ -62,38 +63,53 @@ ScrollSpy.Content = function ScrollSpyContent({
   value,
   ...props
 }: ScrollSpyContentProps) {
-  const { ref, inView } = useInView({ threshold: 0.5 });
-  const { value: activeValue, onChange, refs } = useScrollSpyContext();
-  const active = value === activeValue;
+  const ref = useRef<HTMLDivElement>(null);
+  const {
+    value: ctxValue,
+    inViewValue,
+    onChange,
+    setInViewValue,
+    scrollingIntoViewRef,
+  } = useScrollSpyContext();
 
-  const setRefs = useCallback(
-    (node: HTMLDivElement) => {
-      refs.current[value] = node;
-      ref(node);
+  useInView(ref, {
+    threshold: 0.5,
+    onChange: (inView) => {
+      if (!inView) return
+
+      setInViewValue(value);
+      if (value === ctxValue) scrollingIntoViewRef.current = false;
+      if (!scrollingIntoViewRef.current && value !== ctxValue) onChange(value);
     },
-    [ref, value, refs]
-  );
+  });
 
+  const shouldScrollIntoView = inViewValue !== value && value === ctxValue;
   useEffect(() => {
-    if (inView && !active) {
-      onChange(value);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, inView, value]);
+    if (!shouldScrollIntoView) return;
 
-  return <div ref={setRefs} {...props} />;
+    scrollingIntoViewRef.current = true;
+    ref.current?.scrollIntoView({ behavior: "smooth" });
+  }, [scrollingIntoViewRef, shouldScrollIntoView]);
+
+  return <div ref={ref} {...props} />;
 };
 
 interface ScrollSpyContextData {
   value: ScrollSpyValue | undefined | null;
   onChange: (value: ScrollSpyValue) => void;
-  refs: React.MutableRefObject<Record<ScrollSpyValue, HTMLDivElement>>;
+  inViewValue: ScrollSpyValue | undefined;
+  setInViewValue: React.Dispatch<
+    React.SetStateAction<ScrollSpyValue | undefined>
+  >;
+  scrollingIntoViewRef: React.MutableRefObject<boolean>;
 }
 
 const ScrollSpyContext = createContext<ScrollSpyContextData>({
   value: undefined,
   onChange: () => {},
-  refs: { current: {} },
+  inViewValue: undefined,
+  setInViewValue: () => {},
+  scrollingIntoViewRef: { current: false },
 });
 
 const useScrollSpyContext = () => useContext(ScrollSpyContext);
